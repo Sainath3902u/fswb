@@ -32,7 +32,20 @@ model User {
   name      String
   role      Role     @default(STUDENT)
   orders    Order[]  // One-to-Many: One user can have multiple orders
+  canteen   Canteen? // One-to-One: A user with role CANTEEN_ADMIN can manage ONE canteen
   createdAt DateTime @default(now())
+}
+
+model Canteen {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  subtitle  String?
+  image     String?
+  ownerId   String     @unique // Ensures one owner can only manage one canteen
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  menuItems MenuItem[] // One-to-Many: A canteen has many food items
+  orders    Order[]    // One-to-Many: A canteen processes many orders
+  createdAt DateTime   @default(now())
 }
 
 model MenuItem {
@@ -41,24 +54,28 @@ model MenuItem {
   description String
   price       Float
   isAvailable Boolean     @default(true)
-  orderItems  OrderItem[] // Many-to-Many join relation
+  canteenId   String
+  canteen     Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[] // Many-to-Many join relation to tracking tickets
 }
 
 model Order {
   id          String      @id @default(uuid())
   userId      String
   user        User        @relation(fields: [userId], references: [id])
+  canteenId   String      // Linked so canteen managers can see their incoming tickets
+  canteen     Canteen     @relation(fields: [canteenId], references: [id])
   status      OrderStatus @default(PENDING)
   totalAmount Float
   items       OrderItem[] // Link to the join table
   createdAt   DateTime    @default(now())
 }
 
-// Join Table to bridge Orders and MenuItems (Many-to-Many)
+// Join Table to bridge Orders and MenuItems (Many-to-Many with Quantities)
 model OrderItem {
   id         String   @id @default(uuid())
   orderId    String
-  order      Order    @relation(fields: [orderId], references: [id])
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItemId String
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
   quantity   Int
