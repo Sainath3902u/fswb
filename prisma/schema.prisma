@@ -41,37 +41,70 @@ model Canteen {
   name      String     @unique
   subtitle  String?
   image     String?
-  ownerId   String     @unique // Ensures one owner can only manage one canteen
+  ownerId   String     @unique
   owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  menuItems MenuItem[] // One-to-Many: A canteen has many food items
-  orders    Order[]    // One-to-Many: A canteen processes many orders
+  menuItems MenuItem[]
+  categories Category[] // ✨ ADD THIS: A canteen has many distinct menu display categories
+  orders    Order[]
   createdAt DateTime   @default(now())
 }
 
+// ✨ NEW MODEL: Dedicated Category Model Container
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  icon      String     @default("🍽️") // Stores layout emojis like 🥞, 🍛, 🥤
+  order     Int        @default(0)    // Allows sorting positions (e.g., Breakfast on top, Drinks at bottom)
+  canteenId String
+  canteen   Canteen    @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  menuItems MenuItem[] // One-to-Many: This category has many food menu items
+  createdAt DateTime   @default(now())
+
+  @@unique([name, canteenId]) // Avoids duplicate category titles inside the same canteen stall workspace
+}
+
 model MenuItem {
-  id          String      @id @default(uuid())
-  name        String
-  description String
-  price       Float
-  isAvailable Boolean     @default(true)
-  canteenId   String
-  canteen     Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
-  orderItems  OrderItem[] // Many-to-Many join relation to tracking tickets
+  id            String      @id @default(uuid())
+  name          String
+  description   String?
+  price         Float
+  originalPrice Float?
+  savings       Float?
+  
+  // 🔄 RELATION UPDATE: Swapping out the flat string for a relation key
+  categoryId    String
+  category      Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  
+  rating        Float?
+  deliveryTime  String?
+  weight        String?
+  isAvailable   Boolean     @default(true)
+  canteenId     String
+  canteen       Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
 }
 
+// 📦 ORDER SCHEMA (Updated to capture payment references & receipt tracking details)
 model Order {
-  id          String      @id @default(uuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
-  canteenId   String      // Linked so canteen managers can see their incoming tickets
-  canteen     Canteen     @relation(fields: [canteenId], references: [id])
-  status      OrderStatus @default(PENDING)
-  totalAmount Float
-  items       OrderItem[] // Link to the join table
-  createdAt   DateTime    @default(now())
+  id              String      @id @default(uuid())
+  orderNumber     Int         @unique @default(autoincrement()) // Quick human-readable token for food pickup tokens
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  canteenId       String
+  canteen         Canteen     @relation(fields: [canteenId], references: [id])
+  status          OrderStatus @default(PENDING)
+  totalAmount     Float
+  
+  // Payment Integration Fields (Prepares data lines cleanly for Razorpay integrations!)
+  paymentId       String?     // Stores the live transaction string returned from financial gateways
+  razorpayOrderId String?     @unique // Unique tracker reference matching checkout links
+  
+  items           OrderItem[] // Link to the list items details
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 }
 
-// Join Table to bridge Orders and MenuItems (Many-to-Many with Quantities)
+// 🛒 ORDER ITEM DETAIL SCHEMA (Captures snapshot values exactly at purchase instant)
 model OrderItem {
   id         String   @id @default(uuid())
   orderId    String
@@ -79,4 +112,5 @@ model OrderItem {
   menuItemId String
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
   quantity   Int
+  price      Float    // ✨ CRITICAL: Saves purchase price history securely so historical cards do not break if a canteen updates their item prices later!
 }

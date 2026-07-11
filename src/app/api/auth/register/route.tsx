@@ -30,6 +30,18 @@ export async function POST(request: Request) {
         email,
         password: hashedPassword,
         role: role === "CANTEEN_ADMIN" ? "CANTEEN_ADMIN" : "STUDENT", // Default safe assignment
+        ...(role === "CANTEEN_ADMIN" && {
+          canteen: {
+            create: {
+              name: `${name}'s Kitchen`, // Default title based on owner name
+              subtitle: "Welcome to our food stall!", // Default fallback text string
+              image: null,
+            },
+          },
+        }),
+      },
+      include: {
+        canteen: true,
       },
     });
 
