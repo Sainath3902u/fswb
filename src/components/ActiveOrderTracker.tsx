@@ -542,7 +542,7 @@ export default function ActiveOrderTracker() {
 
     // Initialize Pusher Client using your public client key
     const pusher = new PusherClient(
-      process.env.NEXT_PUBLIC_PUSHER_KEY || "YOUR_PUSHER_KEY", 
+      process.env.NEXT_PUBLIC_PUSHER_KEY || "4ea74b7ade3151df8b06", 
       {
         cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "ap2",
       }
