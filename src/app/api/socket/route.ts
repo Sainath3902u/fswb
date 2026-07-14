@@ -1,36 +1,48 @@
-import { Server as NetServer } from "http";
+import { NextRequest, NextResponse } from "next/server";
 import { Server as ServerIO } from "socket.io";
-import { NextResponse } from "next/server";
+import { socketStore } from "@/lib/socketStore";
 
-declare global {
-  // Attach socket.io server instance to global to persist across hot-reloads
-  // in dev environment without TypeScript errors.
-  // eslint-disable-next-line no-var
-  var io: ServerIO | undefined;
-}
-
-// Failsafe configuration instance hook mapping rules
-export async function GET(req: any) {
-  if (global.io) {
-    return NextResponse.json({ success: true, message: "Socket already active" });
+export async function GET(req: NextRequest) {
+  // Check if server is already running in global memory
+  if ((global as any).io) {
+    return NextResponse.json({ success: true, message: "Socket server already alive" }, { status: 200 });
   }
 
-  // Fallback binding mapping sockets on top of your local dev runtime environment process
-  console.log("🚀 Initializing live WebSockets handler server...");
-  const io = new ServerIO({
+  console.log("🚀 Instantiating live real-time Socket.IO server context inside Next.js...");
+
+  // Extract the raw Node.js HTTP server out of the runtime environment proxy
+  const httpServer = (global as any).server || (req as any).socket?.server;
+  
+  if (!httpServer) {
+    return NextResponse.json({ success: false, error: "Raw HTTP Server context unreachable" }, { status: 500 });
+  }
+
+  const io = new ServerIO(httpServer, {
     path: "/api/socket",
     addTrailingSlash: false,
-    cors: { origin: "*" },
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
   });
 
   io.on("connection", (socket) => {
-    // Room registration logic
-    socket.on("join_user_room", (userId) => {
+    console.log(`🔌 Client linked to socket terminal: ${socket.id}`);
+
+    // Join room channel isolated specifically to this student user's ID
+    socket.on("join_user_room", (userId: string) => {
       socket.join(userId);
-      console.log(`👤 Student joined isolated socket channel room: ${userId}`);
+      console.log(`🎯 User joined clean isolated tracking room: ${userId}`);
+    });
+
+    socket.on("disconnect", () => {
+      console.log(`❌ Client disconnected: ${socket.id}`);
     });
   });
 
-  global.io = io;
-  return NextResponse.json({ success: true, message: "Socket server instantiated" });
+  // Bind references to both scopes to ensure persistent memory access
+  (global as any).io = io;
+  socketStore.setIo(io);
+
+  return NextResponse.json({ success: true, message: "Socket server instantiated successfully" }, { status: 200 });
 }
