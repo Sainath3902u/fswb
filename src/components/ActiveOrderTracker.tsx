@@ -478,7 +478,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation"; // Added usePathname to inspect current route path
 import { ChevronLeft, ChevronRight, Package, ChefHat, Clock } from "lucide-react";
 import PusherClient from "pusher-js";
 
@@ -500,6 +500,8 @@ interface ActiveOrder {
 
 export default function ActiveOrderTracker() {
   const router = useRouter();
+  const pathname = usePathname(); // Initialize pathname hook tracking
+  
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -526,6 +528,12 @@ export default function ActiveOrderTracker() {
 
   // 1. Initial configuration load on mount
   useEffect(() => {
+    // 🛡️ SECURITY VISIBILITY ROUTE FILTER CHECK: If current path is auth related, stop instantly
+    if (pathname?.startsWith("/auth")) {
+      setIsLoading(false);
+      return;
+    }
+
     const cachedUser = localStorage.getItem("user");
     if (!cachedUser) {
       setIsLoading(false);
@@ -534,13 +542,14 @@ export default function ActiveOrderTracker() {
     const parsedUser = JSON.parse(cachedUser);
     setUser(parsedUser);
     syncActiveOrdersFromDB(parsedUser.id);
-  }, [syncActiveOrdersFromDB]);
+  }, [syncActiveOrdersFromDB, pathname]);
 
   // 2. ✨ Pusher Real-Time WebSocket Channel Listener Sync
   useEffect(() => {
-    if (!user) return;
+    // 🛡️ Lock out running listeners entirely if path is on an unauthenticated page
+    if (!user || pathname?.startsWith("/auth")) return;
 
-    // Initialize Pusher Client using your public client key
+    // Initialize Pusher Client using public client credentials
     const pusher = new PusherClient(
       process.env.NEXT_PUBLIC_PUSHER_KEY || "4ea74b7ade3151df8b06", 
       {
@@ -550,6 +559,16 @@ export default function ActiveOrderTracker() {
 
     // Subscribe to a student-specific channel room matching the user ID
     const channel = pusher.subscribe(`user-${user.id}`);
+
+    // ✨ FIX: Listen for brand new orders submitted from cart/checkout page layouts
+    channel.bind("new-order-created", (newOrder: ActiveOrder) => {
+      console.log("☁️ Real-time New Order push payload captured:", newOrder);
+      setActiveOrders((prevOrders) => {
+        // Failsafe validation against duplication artifacts
+        if (prevOrders.some(o => o.id === newOrder.id)) return prevOrders;
+        return [...prevOrders, newOrder];
+      });
+    });
 
     // Bind listener event mapped to backend status mutations
     channel.bind("order-status-changed", (updatedOrder: { id: string; status: string }) => {
@@ -584,7 +603,7 @@ export default function ActiveOrderTracker() {
       pusher.unsubscribe(`user-${user.id}`);
       pusher.disconnect();
     };
-  }, [user, currentIndex]);
+  }, [user, currentIndex, pathname]);
 
   // Handle auto-indexing checks if the order list changes size
   useEffect(() => {
@@ -609,7 +628,8 @@ export default function ActiveOrderTracker() {
     }
   };
 
-  if (isLoading || activeOrders.length === 0) return null;
+  // 🛡️ Core display validation rule fallback handling layout blocks
+  if (pathname?.startsWith("/auth") || isLoading || activeOrders.length === 0) return null;
 
   const currentOrder = activeOrders[currentIndex];
   if (!currentOrder) return null;
@@ -633,7 +653,7 @@ export default function ActiveOrderTracker() {
           text: "Ready for Pickup!",
           color: "text-white font-black tracking-wide",
           bgColor: "bg-orange-600 px-3",
-          gradient: "from-orange-500 via-red-500 to-red-600 animate-pulse"
+          gradient: "from-orange-500 via-red-500 to-red-600"
         };
       default: // PENDING / RECEIVED
         return {

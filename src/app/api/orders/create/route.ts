@@ -1,28 +1,31 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import Pusher from "pusher";
+
+// Initialize Pusher Server configuration instances securely
+const pusher = new Pusher({
+  appId: "2176300",
+  key: "4ea74b7ade3151df8b06",
+  secret: "a22f017220027783b225",
+  cluster: "ap2",
+  useTLS: true,
+});
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { userId, canteenId, items, totalAmount } = body;
+    const { userId, canteenId, items, totalAmount } = await request.json();
 
-    // 1. Validate incoming payload arguments
-    if (!userId || !canteenId || !items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "Missing required parameters to process your checkout." },
-        { status: 400 }
-      );
+    if (!userId || !canteenId || !items || !items.length || !totalAmount) {
+      return NextResponse.json({ success: false, error: "Missing required parameters" }, { status: 400 });
     }
 
-    console.log(`📝 Creating a new database order for User: ${userId} at Canteen: ${canteenId}`);
-
-    // 2. Insert order using the exact schema model relation mappings
-    const newOrder = await prisma.order.create({
+    // 1. Core Transaction Database Creation Hook inside PostgreSQL
+    const createdOrder = await prisma.order.create({
       data: {
-        userId: userId,
-        canteenId: canteenId,
-        totalAmount: totalAmount,
-        status: "PENDING", // Matches your exact capitalized OrderStatus enum string!
+        userId,
+        canteenId,
+        totalAmount,
+        status: "PENDING",
         items: {
           create: items.map((item: any) => ({
             menuItemId: item.menuItemId,
@@ -31,17 +34,42 @@ export async function POST(request: Request) {
           })),
         },
       },
+      // ✨ FIX: Force-include relational dependencies so the shape directly matches what the UI tracker loop maps out
+      include: {
+        user: {
+          select: {
+            name: true,
+          }
+        },
+        items: {
+          include: {
+            menuItem: true,
+          },
+        },
+      }
     });
 
-    console.log(`✨ Order successfully logged to PostgreSQL. Order ID: ${newOrder.id}`);
+    // const orders = orders.map(order => ({
+    //   ...order,
+    //   user: order.user ? {
+    //     ...order.user,
+    //     phone: "9999999999 (No Phone Provided)" // 👈 Dynamically mock the phone field structure needed by your UI component
+    //   } : null
+    // }));
 
-    return NextResponse.json({ success: true, orderId: newOrder.id }, { status: 200 });
+    console.log(`📝 Order created successfully inside database context pipeline for token: ${createdOrder.id}`);
 
+    // 2. ✨ DISPATCH REAL-TIME SIGNAL VIA PUSHER
+    // Emits payload straight to 'user-{userId}' on event listener token 'new-order-created'
+    await pusher.trigger(`user-${userId}`, "new-order-created", createdOrder);
+    console.log(`📡 Pusher event dispatched successfully for real-time creation injection onto user: ${userId}`);
+
+    await pusher.trigger(`canteen-${canteenId}`, "canteen-new-order", createdOrder);
+    console.log(`📡 Instantly pushed order notification bundle straight to merchant room channel: canteen-${canteenId}`);
+
+    return NextResponse.json({ success: true, order: createdOrder });
   } catch (error: any) {
-    console.error("❌ Prisma database transaction failed:", error);
-    return NextResponse.json(
-      { success: false, error: "Database tracking failure.", details: error.message },
-      { status: 500 }
-    );
+    console.error("Order creation route runtime error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

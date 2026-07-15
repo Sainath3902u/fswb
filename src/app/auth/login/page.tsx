@@ -40,7 +40,7 @@ export default function LoginPage() {
 
       // Redirect user instantly according to their verified database Role structure
       if (data.user.role === "CANTEEN_ADMIN") {
-        router.push("/admin/dashboard");
+        router.push("/canteen/dashboard");
       } else {
         router.replace("/dashboard");
       }
