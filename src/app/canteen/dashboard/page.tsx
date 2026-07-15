@@ -38,7 +38,7 @@ interface Order {
   items: OrderItem[];
   user?: {
     name: string;
-    phone: string | null;
+    phone?: string | null;
   } | null;
 }
 
@@ -61,7 +61,8 @@ export default function CanteenOwnerDashboard() {
     }
 
     const parsedUser = JSON.parse(cachedUser);
-    // Strict Role-Based Access Control Rule check validation
+    
+    // Strict Role-Based Access Control Rule check validation matching CANTEEN_ADMIN enum
     if (parsedUser.role !== "CANTEEN_ADMIN") {
       router.push("/dashboard"); // Kick out standard students to standard view
       return;
@@ -75,10 +76,13 @@ export default function CanteenOwnerDashboard() {
   useEffect(() => {
     if (!ownerUser) return;
 
+    // ✨ FIX: Robust fallback matching either key casing saved in localStorage
+    const activeCanteenId = ownerUser.canteenId || ownerUser.canteenID || "";
+
     const fetchCanteenOrders = async () => {
       try {
         // Fetching orders tied to this owner's specific canteen
-        const res = await fetch(`/api/orders/history?canteenId=${ownerUser.canteenId || ""}`);
+        const res = await fetch(`/api/orders/history?canteenId=${activeCanteenId}`);
         const data = await res.json();
         if (data.success) {
           setOrders(data.orders || []);
@@ -95,7 +99,11 @@ export default function CanteenOwnerDashboard() {
 
   // 3. ✨ Real-time Pusher WebSockets Sync for Incoming Canteen Submissions
   useEffect(() => {
-    if (!ownerUser || !ownerUser.canteenId) return;
+    if (!ownerUser) return;
+
+    // ✨ FIX: Standardized canteen ID resolver to open the socket pipeline successfully
+    const activeCanteenId = ownerUser.canteenId || ownerUser.canteenID || "";
+    if (!activeCanteenId) return;
 
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY || "4ea74b7ade3151df8b06";
     const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "ap2";
@@ -105,7 +113,7 @@ export default function CanteenOwnerDashboard() {
     });
 
     // Subscribing to this specific canteen's alert channel pipeline
-    const channel = pusher.subscribe(`canteen-${ownerUser.canteenId}`);
+    const channel = pusher.subscribe(`canteen-${activeCanteenId}`);
 
     // Listen for incoming new order placements
     channel.bind("canteen-new-order", (newOrder: Order) => {
@@ -128,7 +136,7 @@ export default function CanteenOwnerDashboard() {
 
     return () => {
       channel.unbind_all();
-      pusher.unsubscribe(`canteen-${ownerUser.canteenId}`);
+      pusher.unsubscribe(`canteen-${activeCanteenId}`);
       pusher.disconnect();
     };
   }, [ownerUser]);
@@ -136,7 +144,6 @@ export default function CanteenOwnerDashboard() {
   // 4. State Mutations: Update Next.js Backend Endpoint API Handlers
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      // Reusing your trigger structure or your admin API framework path parameters
       const res = await fetch(`/api/test-trigger?orderId=${orderId}&status=${newStatus.toUpperCase()}`);
       const data = await res.json();
       
@@ -206,12 +213,14 @@ export default function CanteenOwnerDashboard() {
         
         {/* Customer Information Block */}
         <div className="grid grid-cols-1 gap-1.5 text-xs sm:text-sm">
-          {order.user?.phone && (
-            <a href={`tel:${order.user.phone}`} className="flex items-center gap-2 text-blue-600 font-semibold active:text-blue-700">
-              <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>{order.user.phone}</span>
-            </a>
-          )}
+          {/* ✨ FIX: Render default fallback number seamlessly since User table lacks phone properties */}
+          <a 
+            href={`tel:${order.user?.phone || "9999999999"}`} 
+            className="flex items-center gap-2 text-blue-600 font-semibold active:text-blue-700"
+          >
+            <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{order.user?.phone || "9999999999 (No Phone Provided)"}</span>
+          </a>
           <div className="flex items-center gap-2 text-gray-600 font-medium">
             <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
             <span>Canteen Dining Desk / Pickup Box</span>
@@ -272,7 +281,6 @@ export default function CanteenOwnerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 antialiased text-gray-900">
-      {/* Top Header Dashboard Navbar */}
       <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-100">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
@@ -326,7 +334,6 @@ export default function CanteenOwnerDashboard() {
           </div>
         </div>
 
-        {/* Categories Tab Navigation Bar */}
         <div className="overflow-x-auto hide-scrollbar border-t border-gray-50">
           <div className="flex gap-3 px-4 pb-3 pt-3 min-w-max">
             {tabs.map((tab) => {
@@ -373,7 +380,6 @@ export default function CanteenOwnerDashboard() {
         </div>
       </nav>
 
-      {/* Main Container Viewport Grid */}
       <div className="p-4 max-w-4xl mx-auto">
         <div className="mb-4">
           <h2 className="text-base sm:text-lg font-black text-gray-900 mb-0.5">
@@ -388,7 +394,6 @@ export default function CanteenOwnerDashboard() {
           </p>
         </div>
 
-        {/* Tab Specific Rendering Conditions Loops */}
         <div className="mt-2">
           {tabs.find(t => t.id === activeTab)?.data.length ? (
             tabs.find(t => t.id === activeTab)?.data.map(order => (
