@@ -87,7 +87,7 @@ export default function OrdersPage () {
     );
   }
 
-  const activeOrders = orders.filter(o => ["PENDING", "PREPARING", "READY"].includes(o.status?.toUpperCase()));
+  const activeOrders = orders.filter(o => ["PENDING", "PAID", "PREPARING", "READY"].includes(o.status?.toUpperCase()));
   const completedOrders = orders.filter(o => ["COMPLETED", "CANCELLED"].includes(o.status?.toUpperCase()));
   const itemsToDisplay = activeTab === "active" ? activeOrders : completedOrders;
   
@@ -186,6 +186,12 @@ export default function OrdersPage () {
 const OrderCard = ({ order, onReorder, onRate }: { order: any; onReorder: any; onRate: any }) => {
   const getStatusInfo = (status: string) => {
     switch (status?.toUpperCase()) {
+      case "PAID": 
+      return { 
+        text: "Payment Confirmed", 
+        icon: <ShoppingBag className="w-3 h-3 stroke-[2.5]" />, 
+        color: "bg-green-50 text-green-700 border-green-100 font-extrabold" 
+      };
       case "PENDING": 
         return { text: "Placed", icon: <ShoppingBag className="w-3 h-3 stroke-[2.5]" />, color: "bg-blue-50 text-blue-700 border-blue-100" };
       case "PREPARING": 

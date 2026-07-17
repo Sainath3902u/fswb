@@ -32,7 +32,7 @@ export async function POST(request: Request) {
         userId,
         canteenId,
         totalAmount: parseFloat((totalAmount / 100).toFixed(2)), // Convert back from paise to rupees
-        status: "PAID", 
+        status: "PENDING", 
         razorpayOrderId: razorpay_order_id,
         paymentId: razorpay_payment_id,
         items: {

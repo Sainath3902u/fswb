@@ -98,10 +98,53 @@ export default function CanteenOwnerDashboard() {
   }, [ownerUser]);
 
   // 3. ✨ Real-time Pusher WebSockets Sync for Incoming Canteen Submissions
+  // useEffect(() => {
+  //   if (!ownerUser) return;
+
+  //   // ✨ FIX: Standardized canteen ID resolver to open the socket pipeline successfully
+  //   const activeCanteenId = ownerUser.canteenId || ownerUser.canteenID || "";
+  //   if (!activeCanteenId) return;
+
+  //   const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY || "4ea74b7ade3151df8b06";
+  //   const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "ap2";
+
+  //   const pusher = new PusherClient(pusherKey, {
+  //     cluster: pusherCluster,
+  //   });
+
+  //   // Subscribing to this specific canteen's alert channel pipeline
+  //   const channel = pusher.subscribe(`canteen-${activeCanteenId}`);
+
+  //   // Listen for incoming new order placements
+  //   channel.bind("canteen-new-order", (newOrder: Order) => {
+  //     console.log("📡 New incoming live order caught:", newOrder);
+  //     setOrders((prevOrders) => {
+  //       if (prevOrders.some(o => o.id === newOrder.id)) return prevOrders;
+  //       return [newOrder, ...prevOrders];
+  //     });
+  //   });
+
+  //   // Listen for client status updates or adjustments from test triggers
+  //   channel.bind("order-status-changed", (updatedPayload: { id: string; status: string }) => {
+  //     console.log("📡 Live order status transition update captured:", updatedPayload);
+  //     setOrders((prevOrders) =>
+  //       prevOrders.map((o) =>
+  //         o.id === updatedPayload.id ? { ...o, status: updatedPayload.status.toUpperCase() } : o
+  //       )
+  //     );
+  //   });
+
+  //   return () => {
+  //     channel.unbind_all();
+  //     pusher.unsubscribe(`canteen-${activeCanteenId}`);
+  //     pusher.disconnect();
+  //   };
+  // }, [ownerUser]);
+
+// 3. ✨ UPGRADED: Real-time Pusher WebSockets Sync with Duplication & State Overwrite Handling
   useEffect(() => {
     if (!ownerUser) return;
 
-    // ✨ FIX: Standardized canteen ID resolver to open the socket pipeline successfully
     const activeCanteenId = ownerUser.canteenId || ownerUser.canteenID || "";
     if (!activeCanteenId) return;
 
@@ -112,21 +155,30 @@ export default function CanteenOwnerDashboard() {
       cluster: pusherCluster,
     });
 
-    // Subscribing to this specific canteen's alert channel pipeline
     const channel = pusher.subscribe(`canteen-${activeCanteenId}`);
 
-    // Listen for incoming new order placements
+    // Listen for incoming new order placements (Fires instantly upon successful Razorpay verification)
     channel.bind("canteen-new-order", (newOrder: Order) => {
-      console.log("📡 New incoming live order caught:", newOrder);
+      console.log("📡 Live Canteen Event: Incoming order transaction update caught:", newOrder);
+      
       setOrders((prevOrders) => {
-        if (prevOrders.some(o => o.id === newOrder.id)) return prevOrders;
-        return [newOrder, ...prevOrders];
+        const orderExists = prevOrders.some(o => o.id === newOrder.id);
+        const normalizedOrder = { ...newOrder, status: newOrder.status?.toUpperCase() };
+
+        if (orderExists) {
+          // ✨ THE CRITICAL FIX: Replaces the stale checkout-state entry with the fully verified server record instantly
+          console.log(`🔄 Overwriting existing order ID CE-${newOrder.id.slice(-6).toUpperCase()} state to: ${normalizedOrder.status}`);
+          return prevOrders.map(o => o.id === newOrder.id ? normalizedOrder : o);
+        }
+        
+        // If it doesn't exist yet in the local list array pool, simply prepend it to the top cleanly
+        return [normalizedOrder, ...prevOrders];
       });
     });
 
-    // Listen for client status updates or adjustments from test triggers
+    // Listen for merchant pipeline updates (Accept, Ready, Delivered)
     channel.bind("order-status-changed", (updatedPayload: { id: string; status: string }) => {
-      console.log("📡 Live order status transition update captured:", updatedPayload);
+      console.log("📡 Live Canteen Event: State transition update captured:", updatedPayload);
       setOrders((prevOrders) =>
         prevOrders.map((o) =>
           o.id === updatedPayload.id ? { ...o, status: updatedPayload.status.toUpperCase() } : o
@@ -265,7 +317,7 @@ export default function CanteenOwnerDashboard() {
   );
 
   // Filtering data subsets based on reactive schema string enum categories
-  const newOrders = orders.filter(o => o.status === 'PENDING');
+  const newOrders = orders.filter(o => o.status === 'PENDING' || o.status === 'PAID');
   const preparingOrders = orders.filter(o => o.status === 'PREPARING');
   const readyOrders = orders.filter(o => o.status === 'READY');
   const deliveredOrders = orders.filter(o => o.status === 'COMPLETED');
