@@ -686,36 +686,42 @@ export default function CartPage() {
       handler: async function (response: any) {
         // This handler triggers automatically the second a user types successful transaction credentials
         try {
-          // Send verification credentials back to the API route to verify and save the order
-          const verifyRes = await fetch("/api/payments/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              userId: user.id,
-              canteenId: cartItems[0]?.canteenId,
-              items: validatedCartItems.filter(i => i.isAvailable).map(i => ({
-                menuItemId: i.id,
-                quantity: i.quantity,
-                price: i.price
-              })),
-              totalAmount: checkoutData.amount
-            })
-          });
+    // ⚡ THE MAGIC FIX: Instantly trigger your fullscreen loading spinner layout 
+    // the exact split-second the payment succeeds, hiding the cart list completely!
+    setIsCartLoading(true); 
 
-          const verifyData = await verifyRes.json();
-          if (verifyData.success) {
-            clearCart(); // Clean out browser localStorage allocations safely
-            router.push("/dashboard/orders/confirmation");
-          } else {
-            alert("Cryptographic verification failed: " + verifyData.error);
-          }
-        } catch (err) {
-          console.error("Verification connection crashed:", err);
-        }
-      },
+    const verifyRes = await fetch("/api/payments/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+        userId: user.id,
+        canteenId: cartItems[0]?.canteenId,
+        items: validatedCartItems.filter(i => i.isAvailable).map(i => ({
+          menuItemId: i.id,
+          quantity: i.quantity,
+          price: i.price
+        })),
+        totalAmount: checkoutData.amount
+      })
+    });
+
+    const verifyData = await verifyRes.json();
+    if (verifyData.success) {
+      clearCart(); 
+      router.push("/dashboard/orders/confirmation");
+    } else {
+      // Re-enable UI if there is an error
+      setIsCartLoading(false);
+      alert("Cryptographic verification failed: " + verifyData.error);
+    }
+  } catch (err) {
+    setIsCartLoading(false);
+    console.error("Verification request failed:", err);
+  }
+},
       prefill: {
         name: user.name,
         email: user.email,
